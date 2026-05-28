@@ -1,5 +1,6 @@
 from joblib import Parallel, delayed
 import numpy as np
+from scipy.optimize import brentq
 import matplotlib.pyplot as plt
 from frictiontools.aims_parse import *
 from frictiontools.constants import *
@@ -8,40 +9,42 @@ from frictiontools.fermi_integral import *
 
 # from mpi4py import MPI
 
-def calculate_friction(g, g_prime, evs, n_spin, chem_pot, k_weight, sigma, temperature, energy_cutoff, perturbing_energies, fermi_mode, expression):
+def calculate_friction(g, g_prime, evs, n_spin, chem_pot, valance_energies, k_weight, sigma, temperature, energy_cutoff, perturbing_energies, fermi_mode, expression):
    
     n_states, _,  = g.shape
 
-    max_occupied_state = find_max_occupied_state(evs, chem_pot, temperature)
-    min_unoccupied_state = find_min_unoccupied_state(evs, chem_pot, temperature)
+    max_occupied_state = find_max_occupied_state(evs, chem_pot, valance_energies, temperature, tolerance = 1e-3, fermi_mode = fermi_mode)
+    min_unoccupied_state = find_min_unoccupied_state(evs, chem_pot, valance_energies, temperature, tolerance = 1e-3, fermi_mode = fermi_mode)
 
     minimum_state, maximum_state = find_bounded_states(evs, chem_pot, energy_cutoff)
 
     friction = np.zeros(len(perturbing_energies), dtype=np.complex128)
 
     if expression == 'default':
-        for i in range(minimum_state, max_occupied_state+1):
-            for j in range(min_unoccupied_state,maximum_state+1):
-        # for i in range(0,n_states):
-        #     for j in range(0,n_states):
-                epsilon = evs[j] - evs[i]
-                if abs(epsilon)<1e-30:
-                    continue
-                # Exclude negative excitations when using fi-fj , since they are included implicitly
-                if epsilon<0:
-                    continue
+            for i in range(minimum_state, max_occupied_state+1):
+                for j in range(min_unoccupied_state,maximum_state+1):
 
-                fermi_factor = evaluate_fermi_factor(evs[i], evs[j], chem_pot, temperature, perturbing_energies, fermi_mode)
-                fermi_factor = fermi_factor * (2/n_spin)
-                # if abs(fermi_factor)<0.0001:
-                #     continue
-                nac_cmplx = np.conj(g[i,j]) * g_prime[i,j] 
+                    epsilon = evs[j] - evs[i]
+                    if abs(epsilon)<1e-30:
+                        continue
+                    # Exclude negative excitations when using fi-fj , since they are included implicitly
+                    if epsilon<0:
+                        continue
 
-                friction_tmp = nac_cmplx * delta_function(epsilon, perturbing_energies, sigma, 1, "gaussian") * fermi_factor 
+                    fermi_factor = evaluate_fermi_factor(evs[i], evs[j], chem_pot, valance_energies, temperature, perturbing_energies, fermi_mode)
+                    fermi_factor = fermi_factor * (2/n_spin)
+                    if abs(fermi_factor)<0.0001:
+                        continue
 
-                friction[:] += friction_tmp
-        friction[:] = friction[:] * k_weight * np.pi * hbar
+                    nac_cmplx = np.multiply(np.conj(g[i,j]), g_prime[i,j], dtype=object) 
+                    friction_tmp = nac_cmplx * delta_function(epsilon, perturbing_energies, sigma, 1, "gaussian") * fermi_factor 
+
+                    friction[:] += friction_tmp
+
+            friction[:] = friction[:] * k_weight * np.pi * hbar
+    
     elif expression == 'allen_low_temperature':
+    
         assert temperature==0., "Allen formula is only valid at 0 K"
         friction_tmp = np.zeros(len(perturbing_energies), dtype=np.complex128)
         for i in range(minimum_state, max_occupied_state+1):
@@ -71,9 +74,8 @@ def calculate_friction(g, g_prime, evs, n_spin, chem_pot, k_weight, sigma, tempe
                 friction_tmp = nac_cmplx * delta_function(epsilon, perturbing_energies, sigma, 1, "gaussian") * fermi_factor 
 
                 friction[:] += friction_tmp
+
         friction[:] = friction[:] * k_weight * np.pi * hbar
-
-
 
     else:
         print("Expression not recognised")
@@ -81,10 +83,291 @@ def calculate_friction(g, g_prime, evs, n_spin, chem_pot, k_weight, sigma, tempe
 
     return friction
 
-def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_indices, friction_dirname, evs, chem_pot, k_weights, sigma, temperature, friction_max_energy, perturbing_energies, n_spin, fermi_mode, expression='default'):
+def calculate_DM_friction(density_mat, g, g_prime, evs, n_spin, chem_pot, valance_energies, k_weight, sigma, temperature, energy_cutoff, perturbing_energies, fermi_mode, expression):
+   
+    n_states, _,  = g.shape
+
+    max_occupied_state = find_max_occupied_state(evs, chem_pot, valance_energies, temperature, tolerance = 1e-3, fermi_mode = fermi_mode)
+    min_unoccupied_state = find_min_unoccupied_state(evs, chem_pot, valance_energies, temperature, tolerance = 1e-3, fermi_mode = fermi_mode)
+
+    minimum_state, maximum_state = find_bounded_states(evs, chem_pot, energy_cutoff)
+
+    friction = np.zeros(len(perturbing_energies), dtype=np.complex128)
+
+    if expression == 'default':
+            
+            for i in range(minimum_state, max_occupied_state+1):
+                for j in range(min_unoccupied_state,maximum_state+1):
+
+                    epsilon = evs[j] - evs[i]
+                    if abs(epsilon)<1e-30:
+                        continue
+                    # Exclude negative excitations when using fi-fj , since they are included implicitly
+                    if epsilon<0:
+                        continue
+
+                    fermi_factor = (density_mat[i,i] - density_mat[j,j])/epsilon
+                    fermi_factor = fermi_factor * (2/n_spin)
+                    if abs(fermi_factor)<0.0001:
+                        continue
+
+                    nac_cmplx = np.multiply(np.conj(g[i,j]), g_prime[i,j], dtype=object) 
+                    #print(delta_function(epsilon, perturbing_energies, sigma, 1, "gaussian"))
+                    friction_tmp = nac_cmplx * delta_function(epsilon, perturbing_energies, sigma, 1, "gaussian") * fermi_factor 
+
+                    friction[:] += friction_tmp
+
+            friction[:] = friction[:] * k_weight * np.pi * hbar
+    
+    elif expression == 'allen_low_temperature':
+    
+        assert temperature==0., "Allen formula is only valid at 0 K"
+        
+        friction_tmp = np.zeros(len(perturbing_energies), dtype=np.complex128)
+        
+        for i in range(minimum_state, max_occupied_state+1):
+            for j in range(min_unoccupied_state,maximum_state+1):
+
+                nac_cmplx = np.conj(g[i,j]) * g_prime[i,j] 
+
+                friction_tmp[:] = (2/n_spin) * nac_cmplx * delta_function(evs[j], chem_pot, sigma, 1, "gaussian") * delta_function(evs[i], chem_pot, sigma, 1, "gaussian") 
+
+                friction[:] += friction_tmp
+
+        friction[:] = friction[:] * k_weight * np.pi * hbar 
+
+    elif expression == 'diagonal_mode':
+
+        for i in range(minimum_state, max_occupied_state+1):
+            for j in range(min_unoccupied_state,maximum_state+1):
+
+                epsilon = evs[j] - evs[i]
+                
+                fermi_factor = (density_mat[i,i] - density_mat[j,j])/epsilon
+                fermi_factor = fermi_factor * (2/n_spin)
+                
+                if abs(fermi_factor)<0.0001:
+                     continue
+                
+                nac_cmplx = np.conj(g[i,j]) * g_prime[i,j] 
+
+                friction_tmp = nac_cmplx * delta_function(epsilon, perturbing_energies, sigma, 1, "gaussian") * fermi_factor 
+
+                friction[:] += friction_tmp
+
+        friction[:] = friction[:] * k_weight * np.pi * hbar
+
+    else:
+        print("Expression not recognised")
+        return None
+
+    return friction
+
+def find_fermi_occpation(evs, chem_pot, temp, min_state, max_state):
+    occ = 0.0
+    for i in range(min_state, max_state+1):
+        occ += fermi_pop(evs[i], chem_pot, temp)
+    
+    return occ
+
+def find_excited_fermi_occpation(evs, chem_pot, valance_energies, temp, min_state, max_state):
+    occ = 0.0
+    for i in range(min_state, max_state+1):
+        occ += excited_fermi_pop(evs[i], valance_energies, chem_pot, temp)
+    
+    return occ
+
+def converge_chemical_potential(
+    temperature,
+    target_electron_deviation,
+    evs,
+    ground_state_mu,
+    fermi_mode,
+    band ="valance",
+    energy_window=None,
+    valance_energies=None,
+    mu_bounds=None,
+    tolerance=1e-8
+):
+    """
+    Converge on a new chemical potential that produces a target electron deviation 
+    from the ground state Fermi-Dirac occupation.
+    
+    Parameters:
+    -----------
+    temperature : float
+        Temperature in Kelvin
+    target_electron_deviation : float
+        Target number of electrons to deviate from ground state (can be positive or negative)
+    evs : np.ndarray
+        Energy eigenvalues in the desired energy window
+    ground_state_mu : float
+        Ground state chemical potential
+    energy_window : tuple, optional
+        (E_min, E_max) to restrict eigenvalues. If None, uses full evs array.
+    fermi_mode : str, default "diff"
+        Fermi distribution mode ("diff", "derivative", "excited", etc.)
+    valance_energies : tuple, optional
+        Required for fermi_mode="excited". Contains (VBM, CBM).
+    mu_bounds : tuple, optional
+        (mu_min, mu_max) bounds for root finding. If None, uses adaptive bounds.
+    tolerance : float, default 1e-8
+        Convergence tolerance for root finding
+    
+    Returns:
+    --------
+    float
+        Converged chemical potential that produces the target electron deviation
+    
+    Raises:
+    -------
+    ValueError
+        If root cannot be bracketed or other convergence issues occur
+    """
+    #print(target_electron_deviation)
+    ### Filter eigenvalues to energy window if specified
+    if energy_window is not None:
+        E_min, E_max = energy_window
+        filtered_evs = evs[(evs >= E_min) & (evs <= E_max)]
+    else:
+        filtered_evs = np.asarray(evs)
+    
+    if len(filtered_evs) == 0:
+        raise ValueError("No eigenvalues found in the specified energy window")
+    
+
+    ### Calculate ground state population
+    ground_pop = np.sum([fermi_pop(e, ground_state_mu, temperature) for e in evs])
+    """ if band == "valance":
+        ground_pop = np.sum([fermi_pop(e, ground_state_mu, temperature) for e in evs])
+    elif band == "conduction":
+        ground_pop = 0.0
+    else:
+        raise ValueError("band kwarg should either be 'valance' or 'conduction' ") """    
+
+    ### Define objective function: electron deviation at test chemical potential
+    def electron_deviation_function(test_mu):
+        """
+        Calculate electron population deviation distance from target.
+        When this equals zero, we have found the target deviation.
+        """
+        if fermi_mode == "excited":
+            test_pop = np.sum([fermi_pop(e, test_mu, temperature) for e in filtered_evs])
+        else:
+            test_pop = np.sum([fermi_pop(e, test_mu, temperature) for e in filtered_evs])
+        
+        # Return the difference from the target
+        return (test_pop - ground_pop) - target_electron_deviation
+    
+
+    ### Set root-finding bounds if not provided
+    if mu_bounds is None:
+        energy_range = filtered_evs.max() - filtered_evs.min()
+        mu_min = filtered_evs.min() - 2 * energy_range
+        mu_max = filtered_evs.max() + 2 * energy_range
+    else:
+        mu_min, mu_max = mu_bounds
+    
+
+    ### Check that the function has opposite signs at the bounds
+    f_min = electron_deviation_function(mu_min)
+    f_max = electron_deviation_function(mu_max)
+    
+    if f_min * f_max > 0:
+        raise ValueError(
+            f"Cannot bracket the root: f(mu_min={mu_min}) = {f_min}, "
+            f"f(mu_max={mu_max}) = {f_max}. Both have the same sign. "
+            f"Consider widening mu_bounds or checking the target_electron_deviation."
+        )
+    
+
+    ### Use Brent's method for robust root finding
+    converged_mu = brentq(
+        electron_deviation_function,
+        mu_min,
+        mu_max,
+        xtol=tolerance
+    )
+    
+    
+    return converged_mu
+
+def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_indices, friction_dirname, evs, chem_pot, Ne_per_k_point, valance_energies, k_weights, sigma, temperature, friction_max_energy, perturbing_energies, n_spin, fermi_mode, expression='default'):
     # Initialize a local friction tensor for this k-point
     local_friction_tensor = np.zeros((len(friction_indices) * 3, len(friction_indices) * 3, len(perturbing_energies)), dtype=np.complex128)
     friction = np.zeros(max(1, len(perturbing_energies)), dtype=np.complex128)
+    
+    if fermi_mode == "excited":
+
+        max_occupied_state = find_max_occupied_state(evs[i_k_point,:], chem_pot, valance_energies, temperature, tolerance = 1e-3)
+        min_unoccupied_state = find_min_unoccupied_state(evs[i_k_point,:], chem_pot, valance_energies, temperature, tolerance = 1e-3)
+        
+        valance_energies = [evs[i_k_point, max_occupied_state], evs[i_k_point, min_unoccupied_state]]
+
+        mu_v = converge_chemical_potential(
+            temperature, 
+            -1*Ne_per_k_point, 
+            evs[i_k_point,:], 
+            chem_pot,
+            fermi_mode,
+            band = "valance",
+            energy_window=(evs[i_k_point, 0], evs[i_k_point, max_occupied_state+1]), 
+            valance_energies=valance_energies, 
+            mu_bounds=None, 
+            tolerance=1e-8,
+        )
+        
+        mu_c = converge_chemical_potential(
+            temperature, 
+            Ne_per_k_point, 
+            evs[i_k_point,:], 
+            chem_pot,
+            fermi_mode,
+            band = "conduction",
+            energy_window=(evs[i_k_point, min_unoccupied_state], evs[i_k_point, -1]), # + (evs[i_k_point, -1] - evs[i_k_point, -2])), 
+            valance_energies=valance_energies, 
+            mu_bounds=None, 
+            tolerance=1e-8
+        )
+
+        groundstate_chem_pot = chem_pot
+        chem_pot = (mu_v, mu_c)
+        print(chem_pot)
+        
+        Ne_GS = find_fermi_occpation(evs[i_k_point,:], groundstate_chem_pot, np.array(temperature)[0], 0, len(evs[i_k_point,:])-1)
+        Ne_EX = find_excited_fermi_occpation(evs[i_k_point,:], valance_energies, chem_pot, np.array(temperature), 0, len(evs[i_k_point,:])-1)
+        print("non-conservation of electrons = ", Ne_EX - Ne_GS)
+
+        """         
+        total_valance_occupation = 0.0
+        for e in evs[i_k_point, 1:(max_occupied_state+1)]:
+            total_valance_occupation += fermi_pop(e, chem_pot, temperature)
+
+        target_occupation = total_valance_occupation - Ne_per_k_point
+        test_occ = 0.0
+        frac_occ_state = 0
+        
+        for i in range(1, min_unoccupied_state+1):
+            print(i)
+            test_occ += fermi_pop(evs[i_k_point, i], chem_pot, temperature)           
+            if test_occ > target_occupation:
+                test_occ -= fermi_pop(evs[i_k_point, i], chem_pot, temperature)
+                frac_occ_state = i
+                continue
+        pop_diff = target_occupation - test_occ
+        mu_valence = evs[i] - boltzmann_kB*temperature*np.log((1-pop_diff)/pop_diff)
+
+        occupation_difference = target_occupation - find_fermi_occpation(evs, mu_valence, temperature, 0, max_occupied_state)
+        n_iterations = 1
+        
+        while np.abs(occupation_difference) > 1e-3 and n_iterations <= 100:
+            perturbed_pop = pop_diff + (1/n_iterations)*occupation_difference
+            mu_valence = evs[i] - boltzmann_kB*temperature*np.log((1-perturbed_pop)/perturbed_pop)
+            occupation_difference = target_occupation - find_fermi_occpation(evs, mu_valence, temperature, 0, max_occupied_state)
+    
+        # unfinished and very very much needs testing 
+        """
+
     i_coord = -1
     for i_atom in range(n_atoms):
         if i_atom not in friction_indices:
@@ -110,7 +393,68 @@ def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_i
                     g = parse_epc_data_kpoint(friction_dirname, i_k_point, i_atom, i_cart, i_spin)
                     g_prime = parse_epc_data_kpoint(friction_dirname, i_k_point, j_atom, j_cart, i_spin)
                     friction[:] = calculate_friction(
-                        g, g_prime, evs[i_k_point, :], n_spin, chem_pot, k_weights[i_k_point], sigma, temperature, friction_max_energy, perturbing_energies, fermi_mode, expression
+                        g, 
+                        g_prime, 
+                        evs[i_k_point, :], 
+                        n_spin, 
+                        chem_pot, 
+                        valance_energies, 
+                        k_weights[i_k_point], 
+                        sigma, 
+                        temperature, 
+                        friction_max_energy, 
+                        perturbing_energies, 
+                        fermi_mode, 
+                        expression
+                    )
+                    local_friction_tensor[i_coord, j_coord, :] += friction[:]
+
+                    if i_coord!=j_coord:
+                        local_friction_tensor[j_coord, i_coord, :] += np.conj(friction[:])
+
+    return local_friction_tensor
+
+def calculate_DM_friction_tensor_for_k_point(density_mat, i_k_point, i_spin, n_atoms, friction_indices, friction_dirname, evs, chem_pot, excited_electrons, valance_energies, k_weights, sigma, temperature, friction_max_energy, perturbing_energies, n_spin, fermi_mode, expression='default'):
+    # Initialize a local friction tensor for this k-point
+    local_friction_tensor = np.zeros((len(friction_indices) * 3, len(friction_indices) * 3, len(perturbing_energies)), dtype=np.complex128)
+    friction = np.zeros(max(1, len(perturbing_energies)), dtype=np.complex128)
+
+    i_coord = -1
+    for i_atom in range(n_atoms):
+        if i_atom not in friction_indices:
+            continue
+
+        for i_cart in range(3):
+            i_coord += 1
+
+            j_coord = -1
+            for j_atom in range(n_atoms):
+                if j_atom not in friction_indices:
+                    continue
+
+                for j_cart in range(3):
+                    j_coord += 1
+
+                    if j_coord < i_coord:
+                        continue
+
+                    g = parse_epc_data_kpoint(friction_dirname, i_k_point, i_atom, i_cart, i_spin)
+                    g_prime = parse_epc_data_kpoint(friction_dirname, i_k_point, j_atom, j_cart, i_spin)
+                    friction[:] = calculate_DM_friction(
+                        density_mat[i_k_point, i_spin, :, :],
+                        g, 
+                        g_prime, 
+                        evs[i_k_point, :], 
+                        n_spin, 
+                        chem_pot,
+                        valance_energies,  
+                        k_weights[i_k_point], 
+                        sigma, 
+                        temperature, 
+                        friction_max_energy, 
+                        perturbing_energies, 
+                        fermi_mode, 
+                        expression
                     )
                     local_friction_tensor[i_coord, j_coord, :] += friction[:]
 
@@ -132,7 +476,8 @@ def calculate_friction_tensor_parallel(params):
     fermi_mode = params.fermi_mode
     expression = params.expression
     n_jobs = params.n_jobs
-
+    valance_energies = params.valance_energies
+    Ne = params.num_excited_electrons
 
     friction_indices = get_friction_indices(friction_aimsout)
 
@@ -143,16 +488,73 @@ def calculate_friction_tensor_parallel(params):
     n_k_points, k_weights = parse_kpoints_and_weights(friction_aimsout)
     chem_pot, evs = parse_ev_data(friction_dirname)
 
-    for i_spin in range(n_spin):
-        results = Parallel(n_jobs=n_jobs)(
-            delayed(calculate_friction_tensor_for_k_point)(
-                i_k_point, i_spin, n_atoms, friction_indices, friction_dirname, evs, chem_pot, k_weights, sigma, temperature, friction_max_energy, perturbing_energies, n_spin, fermi_mode, expression
-            )
-            for i_k_point in range(n_k_points)
-        )
+    if fermi_mode == "excited":
+        Ne = params.num_excited_electrons
+        Ne_per_k_point = Ne/n_k_points
+    else:
+        Ne_per_k_point = 0.0
+    
+    print(Ne)
+    print(Ne_per_k_point)
 
-        # Sum the results from all k-points
-        global_friction_tensor = np.sum(results, axis=0)
+    if fermi_mode == "density_matrix":
+
+        density_mat = aims_read_elsi_density_matrix(friction_dirname, spin=bool(n_spin - 1)) #input of True treats spin resolved, False treats not spin resolved 
+
+        for i_spin in range(n_spin):
+            results = Parallel(n_jobs=n_jobs)(
+                delayed(calculate_DM_friction_tensor_for_k_point)(
+                    density_mat, 
+                    i_k_point, 
+                    i_spin, 
+                    n_atoms, 
+                    friction_indices, 
+                    friction_dirname, 
+                    evs, 
+                    chem_pot, 
+                    valance_energies, 
+                    k_weights, 
+                    sigma, 
+                    temperature, 
+                    friction_max_energy, 
+                    perturbing_energies, 
+                    n_spin, 
+                    fermi_mode, 
+                    expression
+                )
+                for i_k_point in range(n_k_points)
+            )
+
+            # Sum the results from all k-points
+            global_friction_tensor = np.sum(results, axis=0)
+    else:
+
+        for i_spin in range(n_spin):
+            results = Parallel(n_jobs=n_jobs)(
+                delayed(calculate_friction_tensor_for_k_point)(
+                    i_k_point, 
+                    i_spin, 
+                    n_atoms, 
+                    friction_indices, 
+                    friction_dirname, 
+                    evs, 
+                    chem_pot,
+                    Ne_per_k_point,
+                    valance_energies, 
+                    k_weights, 
+                    sigma, 
+                    temperature, 
+                    friction_max_energy, 
+                    perturbing_energies, 
+                    n_spin, 
+                    fermi_mode, 
+                    expression
+                )
+                for i_k_point in range(n_k_points)
+            )
+
+            # Sum the results from all k-points
+            global_friction_tensor = np.sum(results, axis=0)
 
     global_friction_tensor = global_friction_tensor * (eV_to_J / (Ang_to_m)**2)   #kg s-1
     return global_friction_tensor

@@ -29,25 +29,25 @@ def parse_perturbing_energies(file_path):
     Returns:
         numpy.ndarray: Array of perturbing energies in eV.
     """
-    energies_meV = []
+    energies_eV = []
 
     with open(file_path, 'r') as file:
         mode_section = False  # Toggle to detect the mode energy section
         for line in file:
-            if "eV" in line:  # Identify the header and separator
+            if "cm^-1" in line:  # Identify the header and separator
                 mode_section = not mode_section
                 continue
 
             if mode_section:
                 parts = line.split()
-                if len(parts) >= 2:  # Ensure the line has enough columns
+                if len(parts) >= 5:  # Ensure the line has enough columns
                     try:
-                        energy_meV = float(parts[1].replace('i', ''))  # Ignore 'i' for imaginary values
+                        energy_inv_cm = float(parts[4].replace('i', ''))  # Ignore 'i' for imaginary values
                         
-                        energies_meV.append(energy_meV)
+                        energies_eV.append(energy_inv_cm*1.23981e-4)
                     except ValueError:
                         continue  # Skip lines that don't parse correctly
 
     # Convert from meV to eV (1 eV = 1000 meV)
-    energies_eV = np.array(energies_meV) / 1000
+    #energies_eV = np.array(energies_meV) / 1000
     return energies_eV

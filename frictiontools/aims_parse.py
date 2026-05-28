@@ -1,7 +1,8 @@
 import numpy as np
 import scipy.sparse as sp
 import struct
-
+import os
+from os.path import join as pathjoin
 
 
 def parse_chem_pot(aims_file):
@@ -106,7 +107,7 @@ def parse_epc_data_kpoint(dirname,i_k_point,i_atom,i_cart,i_spin):
 
    
 
-    return epc*hartree/bohr
+    return epc*hartree/bohr #converstion to eV/A
 
 def read_elsi_to_csc(filename):
     mat = open(filename,"rb")
@@ -296,3 +297,51 @@ def get_friction_masses(friction_aimsout):
     masses = get_atomic_masses(atomic_symbols)
 
     return masses
+
+def aims_read_elsi_density_matrix(dirname="./", spin=False):
+    """
+    This routine constructs a numpy density matrix from files created using the 
+    FHI-Aims ELSI outputting options.
+
+    To produce outputs of this kind from FHI-Aims are generated with the keyword
+    'elsi_output_matrix    density_matrix'.
+
+    the function takes as arguments the path where these files can be found and a 
+    Boolean based on whether the density matrix outputs are spin resolved.
+
+    the function returns the data stored as a 
+    [num_kpoints, num_spins, basis_length, basis_length] np.array.
+    """
+    DM_files = []
+
+    #how many files exist
+    for file in os.listdir(dirname):
+        if file.startswith("D_spin_"):
+            DM_files.append(file)
+
+    n_files = len(DM_files)
+    
+    if spin:
+        spins = ["01", "02"]
+    else:
+        spins = ["01"]
+    
+    n_kpts = n_files/len(spins)
+    print("num kpoints = ", n_kpts)
+    k_points = np.arange(n_kpts, dtype=int)
+
+    template_dm = read_elsi_to_csc(f"{dirname}/D_spin_01_kpt_000001.csc")
+    density_matrix = np.zeros((len(k_points), len(spins), template_dm.shape[0], template_dm.shape[1]), dtype=np.complex128)
+
+    for (spin_idx, spin) in enumerate(spins):
+        for k_point in k_points:
+            if k_point + 1 < 10:
+                k_point_str = "0" + str(int(k_point + 1))
+            else: 
+                k_point_str = str(int(k_point + 1))
+            
+            dm_at_k = read_elsi_to_csc(f"{dirname}/D_spin_{spin}_kpt_0000{k_point_str}.csc")
+            
+            density_matrix[k_point, spin_idx, :, :] = np.array(dm_at_k.todense())
+
+    return density_matrix

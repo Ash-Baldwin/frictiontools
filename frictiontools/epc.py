@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.integrate import simps  # For numerical integration
+from scipy.integrate import simpson  # For numerical integration
 from frictiontools.constants import *
 from frictiontools.utils import gaussian_function
 import matplotlib.pyplot as plt

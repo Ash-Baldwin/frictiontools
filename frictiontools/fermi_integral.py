@@ -78,20 +78,47 @@ def delta_function(epsilon, x0, sigma, order=1, type="gaussian"):
 
     return result
 
-def find_max_occupied_state(evs, chem_pot, temperature, tolerance=1e-3):
+def find_max_occupied_state(evs, chem_pot, valance_energies, temperature, tolerance=1e-3, fermi_mode="diff"):
     n_states = len(evs)
     max_occupied_state = n_states
-    for i in range(n_states):
-        if (fermi_pop(evs[i], chem_pot, temperature) >=tolerance):
-            max_occupied_state = i
+
+    if fermi_mode == "diff" or fermi_mode == "derivative" or fermi_mode == "density_matrix":
+
+        for i in range(n_states):
+            if (fermi_pop(evs[i], chem_pot, temperature) >=tolerance):
+                max_occupied_state = i
+    
+    elif fermi_mode == "excited":
+    
+        for i in range(n_states):
+            if (excited_fermi_pop(evs[i], valance_energies, chem_pot, temperature) >= tolerance):
+                max_occupied_state = i 
+
+    else:
+        print("Unrecognised fermi distribution mode")
+
+
     return max_occupied_state
 
-def find_min_unoccupied_state(evs, chem_pot, temperature,  tolerance=1e-3):
+def find_min_unoccupied_state(evs, chem_pot, valance_energies, temperature,  tolerance=1e-3, fermi_mode="diff"):
     n_states = len(evs)
     min_unoccupied_state = 0
-    for i in range(n_states):
-        if (fermi_pop(evs[i], chem_pot, temperature)>=(1-tolerance)):
-            min_unoccupied_state = i
+
+    if fermi_mode == "diff" or fermi_mode == "derivative" or fermi_mode == "density_matrix":
+
+        for i in range(n_states):
+            if (fermi_pop(evs[i], chem_pot, temperature) >= (1 - tolerance)):
+                min_unoccupied_state = i
+    
+    elif fermi_mode == "excited":
+    
+        for i in range(n_states):
+            if (excited_fermi_pop(evs[i], valance_energies, chem_pot, temperature) >= (1 - tolerance)):
+                min_unoccupied_state = i 
+    
+    else:
+        print("Unrecognised fermi distribution mode")
+
     return min_unoccupied_state
 
 def find_bounded_states(evs, chem_pot, energy_cutoff):
@@ -108,8 +135,8 @@ def find_bounded_states(evs, chem_pot, energy_cutoff):
     """
     n_states = len(evs)
     # Define the energy window bounds
-    lower_bound = chem_pot - 2 * energy_cutoff
-    upper_bound = chem_pot + 2 * energy_cutoff
+    lower_bound = np.min(chem_pot) - 2 * energy_cutoff
+    upper_bound = np.max(chem_pot) + 2 * energy_cutoff
 
     # Initialize the minimum and maximum state indices to None
     minimum_state = 0
@@ -133,15 +160,24 @@ def find_bounded_states(evs, chem_pot, energy_cutoff):
 
     return minimum_state, maximum_state
 
-def evaluate_fermi_factor(ei, ej, chem_pot, temperature, perturbing_energies, mode="diff"):
+def evaluate_fermi_factor(ei, ej, chem_pot, valance_energies, temperature, perturbing_energies, mode="diff"):
 
-    if mode=="diff":
+    if mode == "diff":
         epsilon = ej - ei
         fermi_factor = (fermi_pop(ei, chem_pot, temperature) - fermi_pop(ej, chem_pot, temperature))
         fermi_factor = fermi_factor/epsilon
         return fermi_factor
-    elif mode =="derivative":
+    elif mode == "derivative":
         fermi_factor = -1.0 * fermi_derivative(ei, chem_pot, temperature)
+        return fermi_factor
+    elif mode == "excited":
+        assert len(chem_pot) == 2, "A tuple of chemical potentials are required for excited state mode."
+        assert len(temperature) == 2, "A tuple of temperatures are required for excited state mode."
+        assert len(valance_energies) == 2, "A tuple containing the valance band minimum (VBM) and conduction band maximum (CBM) in eV is required for excited state mode."
+
+        epsilon = ej - ei
+        fermi_factor = (excited_fermi_pop(ei, valance_energies, chem_pot, temperature) - excited_fermi_pop(ej, valance_energies, chem_pot, temperature))
+        fermi_factor = fermi_factor/epsilon
         return fermi_factor
     else:
         print("Unrecognised fermi factor mode")

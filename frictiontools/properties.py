@@ -8,7 +8,10 @@ class FrictionParams:
     friction_dirname: str
     n_spin: int
     sigma: float
-    temperature: float
+    temperature: any
+    chem_pot: any
+    valance_energies: any
+    num_excited_electrons: float
     friction_max_energy: float
     perturbing_energies: any
     fermi_mode: str
@@ -83,6 +86,9 @@ def print_friction_params(params):
     n_spin = params.n_spin
     sigma = params.sigma
     temperature = params.temperature
+    chem_pot = params.chem_pot
+    valance_energies = params.valance_energies
+    num_excited_electrons = params.num_excited_electrons
     friction_max_energy = params.friction_max_energy
     perturbing_energies = params.perturbing_energies
     fermi_mode = params.fermi_mode
@@ -92,7 +98,6 @@ def print_friction_params(params):
 
     # Resolve absolute paths
     abs_friction_aimsout = os.path.abspath(friction_aimsout)
-
 
     print("===================")
     print("\nFile Paths:")
