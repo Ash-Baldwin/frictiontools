@@ -138,3 +138,16 @@ def excited_fermi_derivative(e, e_v, e_c, mu_v, mu_c, T_v, T_c):
     
     return f_derivative
 
+def find_fermi_occpation(evs, chem_pot, temp, min_state, max_state):
+    occ = 0.0
+    for i in range(min_state, max_state+1):
+        occ += fermi_pop(evs[i], chem_pot, temp)
+    
+    return occ
+
+def find_excited_fermi_occpation(evs, chem_pot, valance_energies, temp, min_state, max_state):
+    occ = 0.0
+    for i in range(min_state, max_state+1):
+        occ += excited_fermi_pop(evs[i], valance_energies, chem_pot, temp)
+    
+    return occ

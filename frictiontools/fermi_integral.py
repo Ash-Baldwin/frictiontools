@@ -85,36 +85,37 @@ def find_max_occupied_state(evs, chem_pot, valance_energies, temperature, tolera
     if fermi_mode == "diff" or fermi_mode == "derivative" or fermi_mode == "density_matrix":
 
         for i in range(n_states):
-            if (fermi_pop(evs[i], chem_pot, temperature) >=tolerance):
+            if (fermi_pop(evs[i], chem_pot, temperature) >= tolerance):
                 max_occupied_state = i
     
     elif fermi_mode == "excited":
     
         for i in range(n_states):
             if (excited_fermi_pop(evs[i], valance_energies, chem_pot, temperature) >= tolerance):
-                max_occupied_state = i 
+                max_occupied_state = i
 
     else:
         print("Unrecognised fermi distribution mode")
-
 
     return max_occupied_state
 
 def find_min_unoccupied_state(evs, chem_pot, valance_energies, temperature,  tolerance=1e-3, fermi_mode="diff"):
     n_states = len(evs)
-    min_unoccupied_state = 0
+    min_unoccupied_state = n_states - 1  # Default to last state if all are occupied
 
     if fermi_mode == "diff" or fermi_mode == "derivative" or fermi_mode == "density_matrix":
 
         for i in range(n_states):
-            if (fermi_pop(evs[i], chem_pot, temperature) >= (1 - tolerance)):
+            if (fermi_pop(evs[i], chem_pot, temperature) < (1 - tolerance)):
                 min_unoccupied_state = i
+                break  # Found the first unoccupied state
     
     elif fermi_mode == "excited":
     
         for i in range(n_states):
-            if (excited_fermi_pop(evs[i], valance_energies, chem_pot, temperature) >= (1 - tolerance)):
-                min_unoccupied_state = i 
+            if (excited_fermi_pop(evs[i], valance_energies, chem_pot, temperature) < (1 - tolerance)):
+                min_unoccupied_state = i
+                break  # Found the first unoccupied state
     
     else:
         print("Unrecognised fermi distribution mode")
