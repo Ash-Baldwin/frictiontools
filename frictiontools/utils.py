@@ -5,7 +5,7 @@ from frictiontools.constants import boltzmann_kB
 def gaussian_function(x,x0,s):
     return 1./np.sqrt(2*np.pi*s*s)*np.exp(-0.5*(((x-x0) / (s))**2))
 
-def fermi_pop(x, x0, temp):
+def fermi_pop(x, x0, T):
     """
     Compute the Fermi population based on the given parameters.
 
@@ -19,13 +19,6 @@ def fermi_pop(x, x0, temp):
         float: Fermi population.
     """
 
-    if type(temp) == np.float64:
-        T = temp
-    elif len(temp) == 2:
-        T = temp[0]
-    else:
-        print("please enter only a float or tuple for temperature")
-         
     if T < np.finfo(float).tiny:  # Check if temperature is near zero
         if x < x0:
             return 1.0  # Fermi population for T = 0
@@ -79,6 +72,7 @@ def excited_fermi_pop(energy, valance_energies, chem_pot, temperature):
         else:
             fermi_denominator = np.exp(fermi_exponent) + 1
             return 1 / fermi_denominator
+    
     else:
         return 0.0
     
@@ -138,16 +132,16 @@ def excited_fermi_derivative(e, e_v, e_c, mu_v, mu_c, T_v, T_c):
     
     return f_derivative
 
-def find_fermi_occpation(evs, chem_pot, temp, min_state, max_state):
+def find_fermi_occupation(evs, chem_pot, temp, min_state, max_state):
     occ = 0.0
-    for i in range(min_state, max_state+1):
+    for i in range(min_state, max_state):
         occ += fermi_pop(evs[i], chem_pot, temp)
     
     return occ
 
-def find_excited_fermi_occpation(evs, chem_pot, valance_energies, temp, min_state, max_state):
+def find_excited_fermi_occupation(evs, chem_pot, valance_energies, temp, min_state, max_state):
     occ = 0.0
-    for i in range(min_state, max_state+1):
+    for i in range(min_state, max_state):
         occ += excited_fermi_pop(evs[i], valance_energies, chem_pot, temp)
     
     return occ

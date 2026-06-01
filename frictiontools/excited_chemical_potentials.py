@@ -50,6 +50,13 @@ def converge_chemical_potential(
         If root cannot be bracketed or other convergence issues occur
     """
 
+    if band == "valance":
+        temp = temperature[0]
+    elif band == "conduction":
+        temp = temperature[1]
+    else:
+        raise ValueError("band can only be either 'valance' or 'conduction'")
+
     ### Filter eigenvalues to energy window if specified
     if energy_window is not None:
         E_min, E_max = energy_window
@@ -61,7 +68,7 @@ def converge_chemical_potential(
         raise ValueError("No eigenvalues found in the specified energy window")
     
     ### Calculate ground state population using correct chemical potential component
-    ground_pop = np.sum([fermi_pop(e, ground_state_mu, temperature) for e in filtered_evs])
+    ground_pop = np.sum([fermi_pop(e, ground_state_mu, temp) for e in filtered_evs])
 
     ### Define objective function: electron deviation at test chemical potential
 
@@ -70,7 +77,7 @@ def converge_chemical_potential(
         Calculate electron population deviation distance from target.
         When this equals zero, we have found the target deviation.
         """
-        test_pop = np.sum([fermi_pop(e, test_mu, temperature) for e in filtered_evs])
+        test_pop = np.sum([fermi_pop(e, test_mu, temp) for e in filtered_evs])
         
         # Return the difference from the target
         return (test_pop - ground_pop) - target_electron_deviation

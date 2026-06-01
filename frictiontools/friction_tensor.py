@@ -172,8 +172,8 @@ def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_i
     
     if fermi_mode == "excited":
 
-        max_occupied_state = find_max_occupied_state(evs[i_k_point,:], chem_pot, valance_energies, temperature, tolerance = 1e-3)
-        min_unoccupied_state = find_min_unoccupied_state(evs[i_k_point,:], chem_pot, valance_energies, temperature, tolerance = 1e-3)
+        max_occupied_state = find_max_occupied_state(evs[i_k_point,:], chem_pot, valance_energies, temperature[0], tolerance = 1e-3)
+        min_unoccupied_state = find_min_unoccupied_state(evs[i_k_point,:], chem_pot, valance_energies, temperature[0], tolerance = 1e-3)
         
         valance_energies = [evs[i_k_point, max_occupied_state], evs[i_k_point, min_unoccupied_state]]
 
@@ -188,10 +188,10 @@ def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_i
             chem_pot,
             fermi_mode,
             band = "valance",
-            energy_window=(evs[i_k_point, 0], valance_energies[0]), #evs[i_k_point, max_occupied_state+1]), 
+            energy_window=(evs[i_k_point, 0], valance_energies[1]), #evs[i_k_point, max_occupied_state+1]), 
             valance_energies=valance_energies, 
             mu_bounds=None, 
-            tolerance=1e-8,
+            tolerance=1e-12,
         )
         
         mu_c = converge_chemical_potential(
@@ -204,49 +204,60 @@ def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_i
             energy_window=(valance_energies[1], evs[i_k_point, -1]+1), #(evs[i_k_point, min_unoccupied_state], evs[i_k_point, -1]+1),
             valance_energies=valance_energies, 
             mu_bounds=None, 
-            tolerance=1e-8
+            tolerance=1e-12
         )
 
         groundstate_chem_pot = chem_pot
         chem_pot = (mu_v, mu_c)
-        print(groundstate_chem_pot)
-        print(chem_pot)
+
+        print("relative chemical potentials = ", (mu_v - groundstate_chem_pot), (mu_c - groundstate_chem_pot))
+
+        """        
+        for i in range(0, len(evs[i_k_point,:])):
+            for j in range(0, len(evs[i_k_point,:])):
+                
+                if abs((evs[i_k_point,i]-groundstate_chem_pot)) <= 1.1 and abs(evs[i_k_point,j]-groundstate_chem_pot) <= 1.1:
+                
+                    epsilon = evs[i_k_point,j] - evs[i_k_point,i]
+                
+                    if abs(epsilon)<1e-30:
+                        continue
+                    # Exclude negative excitations when using fi-fj , since they are included implicitly
+                    if epsilon<0:
+                        continue
+                
+                    print(evs[i_k_point,i]-groundstate_chem_pot, evs[i_k_point,j]-groundstate_chem_pot)
+                    print("fermi factor = ", evaluate_fermi_factor(evs[i_k_point,i], evs[i_k_point,j], chem_pot, valance_energies, temperature, perturbing_energies, fermi_mode))
+        """
         
-        Ne_GS = find_fermi_occpation(evs[i_k_point,:], groundstate_chem_pot, np.array(temperature)[0], 0, len(evs[i_k_point,:])-1)
-        Ne_EX = find_excited_fermi_occpation(evs[i_k_point,:], valance_energies, chem_pot, np.array(temperature), 0, len(evs[i_k_point,:])-1)
-        print("number of electrons in groundstate population = ", Ne_GS)
-        print("number of electrons in excited population = ", Ne_EX)
+        Ne_GS = find_fermi_occupation(evs[i_k_point,:], groundstate_chem_pot, np.array(temperature)[0], 0, len(evs[i_k_point,:]))
+        Ne_EX = find_excited_fermi_occupation(evs[i_k_point,:], valance_energies, chem_pot, np.array(temperature), 0, len(evs[i_k_point,:]))
+        
+        Ne_over_fermi = 0.0 #find_excited_fermi_occpation(evs[i_k_point,:], valance_energies, chem_pot, np.array(temperature), min_unoccupied_state, len(evs[i_k_point,:])-1)
+        for i in range(min_unoccupied_state, len(evs[i_k_point,:])):
+            Ne_over_fermi += excited_fermi_pop(evs[i_k_point, i], valance_energies, chem_pot, temperature)
+        
+        print("min unoccupied state = ", min_unoccupied_state)
+        print("end of sum = ", len(evs[i_k_point,:]))
+        #print("number of electrons in groundstate population = ", Ne_GS)
+        #print("number of electrons in excited population = ", Ne_EX)
+        
+        nonconservation = Ne_EX - Ne_GS
+        if nonconservation >= 1e-3:
+            print("non-conservation of electrons = ", nonconservation)
+        
+        print("num electrons over fermi level = ", Ne_over_fermi)
         print("non-conservation of electrons = ", Ne_EX - Ne_GS)
 
-        """         
-        total_valance_occupation = 0.0
-        for e in evs[i_k_point, 1:(max_occupied_state+1)]:
-            total_valance_occupation += fermi_pop(e, chem_pot, temperature)
+        occupation_spectrum = np.zeros_like(evs[i_k_point,:])
+        for i in range(0, len(evs)):
+            occupation_spectrum[i] = excited_fermi_pop(evs[i_k_point, i], valance_energies, chem_pot, temperature)
 
-        target_occupation = total_valance_occupation - Ne_per_k_point
-        test_occ = 0.0
-        frac_occ_state = 0
-        
-        for i in range(1, min_unoccupied_state+1):
-            print(i)
-            test_occ += fermi_pop(evs[i_k_point, i], chem_pot, temperature)           
-            if test_occ > target_occupation:
-                test_occ -= fermi_pop(evs[i_k_point, i], chem_pot, temperature)
-                frac_occ_state = i
-                continue
-        pop_diff = target_occupation - test_occ
-        mu_valence = evs[i] - boltzmann_kB*temperature*np.log((1-pop_diff)/pop_diff)
-
-        occupation_difference = target_occupation - find_fermi_occpation(evs, mu_valence, temperature, 0, max_occupied_state)
-        n_iterations = 1
-        
-        while np.abs(occupation_difference) > 1e-3 and n_iterations <= 100:
-            perturbed_pop = pop_diff + (1/n_iterations)*occupation_difference
-            mu_valence = evs[i] - boltzmann_kB*temperature*np.log((1-perturbed_pop)/perturbed_pop)
-            occupation_difference = target_occupation - find_fermi_occpation(evs, mu_valence, temperature, 0, max_occupied_state)
-    
-        # unfinished and very very much needs testing 
-        """
+        #print("----------------------------------------------------------------")
+        #print(occupation_spectrum)
+        #print(occupation_spectrum[min_unoccupied_state])
+        #print("----------------------------------------------------------------")
+        print("target electron deviation = ", Ne_per_k_point)
 
     i_coord = -1
     for i_atom in range(n_atoms):
@@ -369,13 +380,21 @@ def calculate_friction_tensor_parallel(params):
     chem_pot, evs = parse_ev_data(friction_dirname)
 
     if fermi_mode == "excited":
-        Ne = params.num_excited_electrons
-        Ne_per_k_point = Ne/n_k_points
+
+        #check any electrons are being excited
+        if abs(Ne) <= 1e-6:
+            fermi_mode = "diff"
+            temperature = temperature[0]
+            Ne_per_k_point = 0.0
+        else:
+            Ne = params.num_excited_electrons
+            Ne_per_k_point = Ne/n_k_points
+        
     else:
         Ne_per_k_point = 0.0
     
-    print(Ne)
-    print(Ne_per_k_point)
+    print("Ne = ", Ne)
+    print("Ne/k_point = ", Ne_per_k_point)
 
     if fermi_mode == "density_matrix":
 
@@ -435,7 +454,7 @@ def calculate_friction_tensor_parallel(params):
 
             # Sum the results from all k-points
             global_friction_tensor = np.sum(results, axis=0)
-
+    print("number of k points = ", n_k_points)
     global_friction_tensor = global_friction_tensor * (eV_to_J / (Ang_to_m)**2)   #kg s-1
     return global_friction_tensor
 
