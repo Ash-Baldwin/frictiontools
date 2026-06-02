@@ -165,7 +165,7 @@ def calculate_DM_friction(density_mat, g, g_prime, evs, n_spin, chem_pot, valanc
 
     return friction
 
-def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_indices, friction_dirname, evs, chem_pot, Ne_per_k_point, valance_energies, k_weights, sigma, temperature, friction_max_energy, perturbing_energies, n_spin, fermi_mode, expression='default'):
+def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_indices, friction_dirname, evs, chem_pot, Ne_per_k_point, valance_energies, k_weights, k_positions, k_broadening, sigma, temperature, friction_max_energy, perturbing_energies, n_spin, fermi_mode, expression='default'):
     # Initialize a local friction tensor for this k-point
     local_friction_tensor = np.zeros((len(friction_indices) * 3, len(friction_indices) * 3, len(perturbing_energies)), dtype=np.complex128)
     friction = np.zeros(max(1, len(perturbing_energies)), dtype=np.complex128)
@@ -177,13 +177,17 @@ def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_i
         
         valance_energies = [evs[i_k_point, max_occupied_state], evs[i_k_point, min_unoccupied_state]]
 
+        gamma_seperation = np.sqrt(sum(k_positions[i_k_point]**2))
+        excited_population_weight = gaussian_function(gamma_seperation, 0.0, k_broadening)
+        target_electron_deviation = Ne_per_k_point * excited_population_weight
+
         #print(f"max_occupied_state: {max_occupied_state}, energy: {evs[i_k_point, max_occupied_state]}")
         #print(f"min_unoccupied_state: {min_unoccupied_state}, energy: {evs[i_k_point, min_unoccupied_state]}")
         #print(f"Gap size: {min_unoccupied_state - max_occupied_state - 1} states")
 
         mu_v = converge_chemical_potential(
             temperature, 
-            -1*Ne_per_k_point, 
+            -1*target_electron_deviation, 
             evs[i_k_point,:], 
             chem_pot,
             fermi_mode,
@@ -196,7 +200,7 @@ def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_i
         
         mu_c = converge_chemical_potential(
             temperature, 
-            Ne_per_k_point, 
+            target_electron_deviation, 
             evs[i_k_point,:], 
             chem_pot,
             fermi_mode,
@@ -210,7 +214,7 @@ def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_i
         groundstate_chem_pot = chem_pot
         chem_pot = (mu_v, mu_c)
 
-        print("relative chemical potentials = ", (mu_v - groundstate_chem_pot), (mu_c - groundstate_chem_pot))
+        #print("relative chemical potentials = ", (mu_v - groundstate_chem_pot), (mu_c - groundstate_chem_pot))
 
         """        
         for i in range(0, len(evs[i_k_point,:])):
@@ -233,12 +237,10 @@ def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_i
         Ne_GS = find_fermi_occupation(evs[i_k_point,:], groundstate_chem_pot, np.array(temperature)[0], 0, len(evs[i_k_point,:]))
         Ne_EX = find_excited_fermi_occupation(evs[i_k_point,:], valance_energies, chem_pot, np.array(temperature), 0, len(evs[i_k_point,:]))
         
-        Ne_over_fermi = 0.0 #find_excited_fermi_occpation(evs[i_k_point,:], valance_energies, chem_pot, np.array(temperature), min_unoccupied_state, len(evs[i_k_point,:])-1)
-        for i in range(min_unoccupied_state, len(evs[i_k_point,:])):
-            Ne_over_fermi += excited_fermi_pop(evs[i_k_point, i], valance_energies, chem_pot, temperature)
+        #Ne_over_fermi = 0.0 #find_excited_fermi_occpation(evs[i_k_point,:], valance_energies, chem_pot, np.array(temperature), min_unoccupied_state, len(evs[i_k_point,:])-1)
+        #for i in range(min_unoccupied_state, len(evs[i_k_point,:])):
+        #    Ne_over_fermi += excited_fermi_pop(evs[i_k_point, i], valance_energies, chem_pot, temperature)
         
-        print("min unoccupied state = ", min_unoccupied_state)
-        print("end of sum = ", len(evs[i_k_point,:]))
         #print("number of electrons in groundstate population = ", Ne_GS)
         #print("number of electrons in excited population = ", Ne_EX)
         
@@ -246,18 +248,18 @@ def calculate_friction_tensor_for_k_point(i_k_point, i_spin, n_atoms, friction_i
         if nonconservation >= 1e-3:
             print("non-conservation of electrons = ", nonconservation)
         
-        print("num electrons over fermi level = ", Ne_over_fermi)
-        print("non-conservation of electrons = ", Ne_EX - Ne_GS)
+        #print("non-conservation of electrons = ", Ne_EX - Ne_GS)
+        #print("num electrons over fermi level = ", Ne_over_fermi)
 
-        occupation_spectrum = np.zeros_like(evs[i_k_point,:])
-        for i in range(0, len(evs)):
-            occupation_spectrum[i] = excited_fermi_pop(evs[i_k_point, i], valance_energies, chem_pot, temperature)
+        #occupation_spectrum = np.zeros_like(evs[i_k_point,:])
+        #for i in range(0, len(evs)):
+        #    occupation_spectrum[i] = excited_fermi_pop(evs[i_k_point, i], valance_energies, chem_pot, temperature)
 
         #print("----------------------------------------------------------------")
         #print(occupation_spectrum)
         #print(occupation_spectrum[min_unoccupied_state])
         #print("----------------------------------------------------------------")
-        print("target electron deviation = ", Ne_per_k_point)
+        #print("target electron deviation = ", target_electron_deviation)
 
     i_coord = -1
     for i_atom in range(n_atoms):
@@ -369,6 +371,7 @@ def calculate_friction_tensor_parallel(params):
     n_jobs = params.n_jobs
     valance_energies = params.valance_energies
     Ne = params.num_excited_electrons
+    k_broadening = params.excited_population_broadening
 
     friction_indices = get_friction_indices(friction_aimsout)
 
@@ -376,7 +379,7 @@ def calculate_friction_tensor_parallel(params):
     n_friction_atoms = len(friction_indices)
     ndims = 3 * n_friction_atoms
 
-    n_k_points, k_weights = parse_kpoints_and_weights(friction_aimsout)
+    n_k_points, k_weights, k_positions = parse_kpoints_and_weights(friction_aimsout)
     chem_pot, evs = parse_ev_data(friction_dirname)
 
     if fermi_mode == "excited":
@@ -388,7 +391,13 @@ def calculate_friction_tensor_parallel(params):
             Ne_per_k_point = 0.0
         else:
             Ne = params.num_excited_electrons
-            Ne_per_k_point = Ne/n_k_points
+            sum_over_k_points = 0.0
+            for i in range(0, len(k_positions)):
+                gamma_seperation = np.sqrt(sum(k_positions[i]**2))
+                sum_over_k_points += gaussian_function(gamma_seperation, 0.0, k_broadening)
+            
+            print("sum over k points = ", sum_over_k_points)
+            Ne_per_k_point = Ne/sum_over_k_points
         
     else:
         Ne_per_k_point = 0.0
@@ -440,7 +449,9 @@ def calculate_friction_tensor_parallel(params):
                     chem_pot,
                     Ne_per_k_point,
                     valance_energies, 
-                    k_weights, 
+                    k_weights,
+                    k_positions,
+                    k_broadening, 
                     sigma, 
                     temperature, 
                     friction_max_energy, 

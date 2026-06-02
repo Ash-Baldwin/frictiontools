@@ -12,6 +12,7 @@ class FrictionParams:
     chem_pot: any
     valance_energies: any
     num_excited_electrons: float
+    excited_population_broadening: float
     friction_max_energy: float
     perturbing_energies: any
     fermi_mode: str
@@ -43,7 +44,7 @@ def get_system_properties(params):
     n_friction_atoms = len(friction_masses)
     ndims = 3 * n_friction_atoms
 
-    n_k_points, k_weights = parse_kpoints_and_weights(friction_aimsout)
+    n_k_points, k_weights, k_positions = parse_kpoints_and_weights(friction_aimsout)
     chem_pot, evs = parse_ev_data(friction_dirname)
 
     system_properties = SystemProps(

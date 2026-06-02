@@ -193,7 +193,7 @@ def parse_kpoints_and_weights(file_path):
     """
     num_kpoints = 0
     k_weights = []
-
+    k_positions = []
     with open(file_path, 'r') as file:
         for line in file:
             # Parse the number of k-points
@@ -205,13 +205,20 @@ def parse_kpoints_and_weights(file_path):
                 weight_str = line.split("weight:")[1].strip()
                 k_weights.append(float(weight_str))
 
+                k_point = line.split()[2].strip()
+                k_x = line.split()[4]
+                k_y = line.split()[5]
+                k_z = line.split()[6]
+                coord = np.array([float(k_x), float(k_y), float(k_z)])
+                k_positions.append(coord)
+
             elif "Begin self-consistency loop" in line:
                 break
 
     # Convert the weights list to a numpy array
     k_weights = np.array(k_weights)
 
-    return num_kpoints, k_weights
+    return num_kpoints, k_weights, k_positions
 
 def get_friction_indices(friction_aimsout):
     """
