@@ -1,0 +1,6 @@
+for i in $(seq 50.0 50.0 200.0);
+do
+    mkdir InSi_calculated_tensors/friction_tensors_dfttoolkit_format/Ne_60k_sweep/Ne_${i}_T_60.0_tensor;
+    cp geometry.in InSi_calculated_tensors/friction_tensors_dfttoolkit_format/Ne_60k_sweep/Ne_${i}_T_60.0_tensor/geometry.in;
+    python3 calculate_friction_tensor.py $i 60.0
+done

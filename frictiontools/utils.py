@@ -139,7 +139,7 @@ def find_fermi_occupation(evs, chem_pot, temp, min_state, max_state):
     
     return occ
 
-def find_excited_fermi_occupation(evs, chem_pot, valance_energies, temp, min_state, max_state):
+def find_excited_fermi_occupation(evs, valance_energies, chem_pot, temp, min_state, max_state):
     occ = 0.0
     for i in range(min_state, max_state):
         occ += excited_fermi_pop(evs[i], valance_energies, chem_pot, temp)

@@ -3,7 +3,7 @@ import scipy.sparse as sp
 import struct
 import os
 from os.path import join as pathjoin
-
+import h5py
 
 def parse_chem_pot(aims_file):
     chem_pot = 0
@@ -99,13 +99,10 @@ def parse_epc_data_kpoint(dirname,i_k_point,i_atom,i_cart,i_spin):
     # print('        Time for 1 parse ev/ s: '+str(end - start))
 
     # start = time.time()
-    epc= read_elsi_to_csc(epc_file)
+    epc = read_elsi_to_csc(epc_file)
 
     # end = time.time()
     # print('        Time for 1 parse epc/ s: '+str(end - start))
-
-
-   
 
     return epc*hartree/bohr #converstion to eV/A
 
@@ -169,14 +166,12 @@ def read_elsi_to_csc(filename):
 
 def parse_ev_data(dirname):
 
-
     aims_filename = dirname+"aims.out"
     chem_pot = parse_chem_pot(aims_filename)
 
     evs_filename = dirname+"friction_KS_eigenvalues.out"
     evs_file = evs_filename
     evs = parse_evs(evs_file)
-
 
     return chem_pot, evs
 
@@ -352,3 +347,15 @@ def aims_read_elsi_density_matrix(dirname="./", spin=False):
             density_matrix[k_point, spin_idx, :, :] = np.array(dm_at_k.todense())
 
     return density_matrix
+
+def read_Athermal_distribution(filename):
+    f = h5py.File(filename, 'r')
+    fneq = np.array(f["Athermal Electrons/Non-Equilibrium Distribution"])[:,0,-1]
+    DOS = np.array(f["Structure/DOS"])
+    egrid = np.array(f["Structure/egrid"])
+    print(len(egrid))
+    print(len(DOS))
+    print(len(fneq))
+    occ_neq_DOS = fneq*DOS
+
+    return fneq, DOS, egrid, occ_neq_DOS

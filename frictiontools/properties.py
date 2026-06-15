@@ -12,7 +12,7 @@ class FrictionParams:
     chem_pot: any
     valance_energies: any
     num_excited_electrons: float
-    excited_population_broadening: float
+    excited_k_point: int
     friction_max_energy: float
     perturbing_energies: any
     fermi_mode: str

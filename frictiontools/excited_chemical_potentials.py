@@ -1,6 +1,7 @@
 from scipy.optimize import brentq
 import numpy as np
-from frictiontools.utils import *
+from frictiontools.utils import fermi_pop, excited_fermi_pop
+from frictiontools.constants import boltzmann_kB
 
 def converge_chemical_potential(
     temperature,
@@ -77,7 +78,10 @@ def converge_chemical_potential(
         Calculate electron population deviation distance from target.
         When this equals zero, we have found the target deviation.
         """
-        test_pop = np.sum([fermi_pop(e, test_mu, temp) for e in filtered_evs])
+        if fermi_mode == "excited":
+            test_pop = np.sum([excited_fermi_pop(e, valance_energies, [test_mu if band == "valance" else ground_state_mu, test_mu if band == "conduction" else ground_state_mu], temperature) for e in filtered_evs])
+        else:
+            test_pop = np.sum([fermi_pop(e, test_mu, temp) for e in filtered_evs])
         
         # Return the difference from the target
         return (test_pop - ground_pop) - target_electron_deviation
@@ -85,13 +89,12 @@ def converge_chemical_potential(
 
     ### Set root-finding bounds if not provided
     if mu_bounds is None:
-        energy_range = filtered_evs.max() - filtered_evs.min()
-        mu_min = filtered_evs.min() - 2 * energy_range
-        mu_max = filtered_evs.max() + 2 * energy_range
+        energy_range = evs.max() - evs.min()
+        mu_min = evs.min() - 2 * energy_range
+        mu_max = evs.max() + 2 * energy_range
     else:
         mu_min, mu_max = mu_bounds
     
-
     ### Check that the function has opposite signs at the bounds
     f_min = electron_deviation_function(mu_min)
     f_max = electron_deviation_function(mu_max)

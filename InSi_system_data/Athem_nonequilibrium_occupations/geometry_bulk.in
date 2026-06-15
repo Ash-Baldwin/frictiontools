@@ -1,0 +1,9 @@
+# Bulk Silicon (diamond cubic)
+# Lattice constant a = 5.431 Å
+
+lattice_vector  0.000000000  2.715500000  2.715500000
+lattice_vector  2.715500000  0.000000000  2.715500000
+lattice_vector  2.715500000  2.715500000  0.000000000
+
+atom_frac  0.000000000  0.000000000  0.000000000  Si
+atom_frac  0.250000000  0.250000000  0.250000000  Si

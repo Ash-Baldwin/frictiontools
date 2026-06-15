@@ -1,0 +1,4 @@
+for i in $(seq 5500 500 10000);
+do
+    python3 calculate_friction_tensor.py 1.0 $i
+done

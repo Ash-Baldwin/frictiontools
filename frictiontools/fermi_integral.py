@@ -82,7 +82,7 @@ def find_max_occupied_state(evs, chem_pot, valance_energies, temperature, tolera
     n_states = len(evs)
     max_occupied_state = n_states
 
-    if fermi_mode == "diff" or fermi_mode == "derivative" or fermi_mode == "density_matrix":
+    if fermi_mode == "diff" or fermi_mode == "derivative" or fermi_mode == "density_matrix" or fermi_mode == "Athermal":
 
         for i in range(n_states):
             if (fermi_pop(evs[i], chem_pot, temperature) >= tolerance):
@@ -103,7 +103,7 @@ def find_min_unoccupied_state(evs, chem_pot, valance_energies, temperature,  tol
     n_states = len(evs)
     min_unoccupied_state = n_states - 1  # Default to last state if all are occupied
 
-    if fermi_mode == "diff" or fermi_mode == "derivative" or fermi_mode == "density_matrix":
+    if fermi_mode == "diff" or fermi_mode == "derivative" or fermi_mode == "density_matrix" or fermi_mode == "Athermal":
 
         for i in range(n_states):
             if (fermi_pop(evs[i], chem_pot, temperature) < (1 - tolerance)):
